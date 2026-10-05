@@ -11,10 +11,59 @@ load_dotenv()
 
 # Page configuration
 st.set_page_config(
-    page_title="Lok Sewa Agri Paper II - Master Answer Engine",
+    page_title="Lok Sewa Agri Paper II - Master Engine",
     page_icon="🌾",
     layout="wide",
     initial_sidebar_state="expanded",
+)
+
+# ----------------- HARDCODED BEST & FASTEST MODELS ----------------- #
+TEXT_MODEL = "llama-3.3-70b-versatile"       # Highest reasoning quality & blazing-fast inference (~280 t/s)
+VISION_MODEL = "llama-3.2-11b-vision-preview"  # Instant multimodal vision OCR
+
+# ----------------- CUSTOM READABILITY & UI STYLING ----------------- #
+st.markdown(
+    """
+    <style>
+    /* Main container clean typography */
+    .main .block-container {
+        max-width: 950px;
+        padding-top: 2rem;
+        padding-bottom: 3rem;
+        line-height: 1.75;
+        font-size: 1.05rem;
+    }
+    
+    /* Clean headers */
+    h1, h2, h3, h4 {
+        color: #1e3a8a;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+    }
+    
+    /* Card-like answer container */
+    .answer-card {
+        background-color: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 24px;
+        margin-top: 20px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    }
+    
+    /* Key-point badges */
+    strong {
+        color: #0f172a;
+    }
+    
+    /* Sidebar polish */
+    .stSidebar {
+        background-color: #f8fafc;
+        border-right: 1px solid #e2e8f0;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
 )
 
 # ----------------- COMPREHENSIVE LOK SEWA SYSTEM PROMPT ----------------- #
@@ -77,27 +126,24 @@ Dynamically cross-reference the relevant laws and plans based on the subject mat
 - Soil, Forestry & Trade: Fertilizer Control Order, 2055 & Subsidy Directives, Agro-Forestry Policy, 2076, Agri-Business Promotion Policy, 2063, NTIS (2016/2023), WTO (AoA, SPS, TBT), SAFTA, Crop/Livestock Insurance Subsidy Directives.
 
 ========================================================================================
-4. TECHNICAL CONVENTIONS
+4. TECHNICAL CONVENTIONS & READABILITY
 ========================================================================================
 - Use bold keywords before colons: **[Technical Keyword]:** Detailed technical statement.
-- Write scientific botanical and zoological names strictly in italics (e.g., *Spodoptera frugiperda*, *Tuta absoluta*, *Ralstonia solanacearum*).
-- Zero fluff or generic essays. Every sentence must carry technical value.
+- Write scientific botanical and zoological names strictly in italics (e.g., *Spodoptera frugiperda*, *Tuta absoluta*).
+- Maintain high information density and readable formatting with clean paragraph breaks.
 """
 
 # ----------------- CREDENTIALS RESOLVER ----------------- #
 def resolve_groq_api_key() -> str:
-    """Resolves Groq API key from Streamlit secrets, env variables, or session state."""
-    # 1. Check Streamlit Secrets
+    """Auto-resolves Groq API key from Streamlit secrets, env variables, or session state."""
     if hasattr(st, "secrets"):
         if "GROQ_API_KEY" in st.secrets:
             return st.secrets["GROQ_API_KEY"]
         elif "groq_api_key" in st.secrets:
             return st.secrets["groq_api_key"]
-    # 2. Check Environment Variables
     env_key = os.getenv("GROQ_API_KEY")
     if env_key:
         return env_key
-    # 3. Check Session State
     return st.session_state.get("manual_groq_api_key", "")
 
 # ----------------- BACKEND FUNCTIONS ----------------- #
@@ -112,10 +158,10 @@ def encode_image(image: Image.Image) -> str:
     return base64.b64encode(buffered.getvalue()).decode("utf-8")
 
 def extract_question_from_image(client: Groq, image: Image.Image) -> str:
-    """Uses Groq multimodal vision model to transcribe question from image."""
+    """Uses the fastest Groq multimodal vision model to transcribe question from image."""
     base64_img = encode_image(image)
     response = client.chat.completions.create(
-        model="llama-3.2-11b-vision-preview",
+        model=VISION_MODEL,
         messages=[
             {
                 "role": "user",
@@ -135,7 +181,8 @@ def extract_question_from_image(client: Groq, image: Image.Image) -> str:
     )
     return response.choices[0].message.content.strip()
 
-def generate_model_answer(client: Groq, question: str, marks: int, diagram_type: str, text_model: str) -> str:
+def generate_model_answer(client: Groq, question: str, marks: int, diagram_type: str) -> str:
+    """Generates maximum-scoring answer using Llama 3.3 70B Versatile."""
     user_prompt = f"""
 EXAMINATION QUESTION:
 \"\"\"{question}\"\"\"
@@ -154,52 +201,48 @@ CRITICAL RULES:
    - Statutory & Policy Target Alignment (citing specific acts/rules up to 2081 BS).
 """
     response = client.chat.completions.create(
-        model=text_model,
+        model=TEXT_MODEL,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
         ],
-        temperature=0.3,
+        temperature=0.25,
         max_tokens=4096,
     )
     return response.choices[0].message.content
 
-# ----------------- USER INTERFACE ----------------- #
+# ----------------- STREAMLINED USER INTERFACE ----------------- #
 def main():
-    st.title("🌾 Lok Sewa Agriculture Paper II: Master Answer Engine")
-    st.caption("Nepal Agriculture Service (Gazetted 3rd Class) • Content-Driven Empirical Data • 2081 BS Policy Integrated")
+    st.title("🌾 Lok Sewa Agriculture Paper II: Master Engine")
+    st.caption("Engineered for Gazetted 3rd Class Officers • Automatic Optimal Model Active (`Llama 3.3 70B`)")
 
-    # API Key Handling
-    resolved_key = resolve_groq_api_key()
+    # Resolve API Key
+    active_api_key = resolve_groq_api_key()
 
     with st.sidebar:
-        st.header("⚙️ Configuration")
-        if resolved_key:
-            st.success("✅ Groq API Key loaded securely from Secrets/Environment")
-            active_api_key = resolved_key
+        st.header("⚙️ Exam Controls")
+        
+        if active_api_key:
+            st.success("🔒 API Key Active (Streamlit Secrets)")
         else:
             st.warning("⚠️ No API Key found in `st.secrets`.")
-            active_api_key = st.text_input(
+            input_key = st.text_input(
                 "Enter Groq API Key:",
                 type="password",
-                help="Add GROQ_API_KEY to your Streamlit secrets or paste it here.",
+                help="Paste your key or add GROQ_API_KEY to your Streamlit secrets.",
             )
-            if active_api_key:
-                st.session_state["manual_groq_api_key"] = active_api_key
+            if input_key:
+                st.session_state["manual_groq_api_key"] = input_key
+                active_api_key = input_key
 
-        st.subheader("Examination Parameters")
-        text_model = st.selectbox(
-            "Reasoning LLM",
-            options=["llama-3.3-70b-versatile", "llama-3.1-70b-versatile"],
-            index=0,
-        )
+        st.divider()
 
         marks = st.radio(
-            "Marks Allocation",
+            "Target Question Marks",
             options=[10, 5],
             index=0,
             horizontal=True,
-            help="10 Marks = Exhaustive (~1.5-2 pages) | 5 Marks = Compact (~0.75 page)",
+            help="10 Marks = Exhaustive answer with full body diagram & 3-step conclusion | 5 Marks = Compact technical answer",
         )
 
         diagram_options = [
@@ -213,23 +256,12 @@ def main():
             "Timeline / Roadmap (Mermaid)",
             "Cause–Effect / Fishbone Diagram (Mermaid)",
             "Concept Map / Mind Map (Mermaid)",
-            "Feedback Loop / Circular Diagram (Mermaid)",
             "Comparison Matrix / Table (Markdown)",
         ]
-        selected_diagram = st.selectbox("Body Visual Preference", options=diagram_options, index=0)
+        selected_diagram = st.selectbox("Preferred Body Visual", options=diagram_options, index=0)
 
         st.divider()
-        with st.expander("📜 Integrated Policy Universe"):
-            st.markdown(
-                """
-                - **Food & Quality:** Food Hygiene & Quality Act 2081, Right to Food & Food Sovereignty Act 2075 & Reg 2081, Food Safety Policy 2076
-                - **Pesticides & Biosecurity:** Pesticide Mgmt Act 2076 & Reg 2081, Plant Protection Act 2064 & Rules 2066, 24 Banned Pesticides List
-                - **Seeds & Biodiversity:** Seeds Act 2045 & Rules 2069, Seed Vision (2013-2025), Agro-biodiversity Policy 2063 (Amended 2071)
-                - **Plans & Strategies:** 16th Plan (2081/82-2085/86), ADS (2015-2035), Agri Investment Decade (2081-2091), National Agri Policy 2061/2081
-                - **Land & Local Governance:** Land Related (20th Amend) Rules 2081, Land Use Act 2076 & Reg 2079, Farmer Categorization Directive 2081, LGOA 2074
-                - **Trade & Economics:** Agri-Business Promotion Policy 2063, NTIS 2016/2023, WTO (AoA, SPS, TBT), SAFTA
-                """
-            )
+        st.info("💡 **Active Policy Framework:** 2081 BS Acts (Food Hygiene, Pesticide Mgmt Reg, Agri Investment Decade, 16th Plan) are pre-loaded.")
 
     client = get_groq_client(active_api_key)
 
@@ -239,10 +271,10 @@ def main():
     with tab_text:
         typed_question = st.text_area(
             "Enter Subjective Agriculture Question:",
-            height=140,
-            placeholder="e.g., Explain the seed production practices of hybrid maize including isolation distance, detasseling, and seed certification standards in Nepal. [10]",
+            height=130,
+            placeholder="e.g., Define Integrated Pest Management (IPM). Illustrate its hierarchical components and analyze the regulatory and strategic measures required to minimize pesticide residue hazards in Nepal. [10]",
         )
-        if st.button("Generate Model Answer", type="primary", key="btn_text"):
+        if st.button("Generate Master Answer", type="primary", key="btn_text"):
             if not typed_question.strip():
                 st.warning("Please type a question before generating.")
             else:
@@ -250,21 +282,21 @@ def main():
 
     with tab_scan:
         uploaded_file = st.file_uploader(
-            "Upload exam question photo (Handwritten or Printed):",
+            "Upload photo of exam question (Handwritten or Printed):",
             type=["png", "jpg", "jpeg", "webp"],
         )
         if uploaded_file is not None:
             image = Image.open(uploaded_file)
-            st.image(image, caption="Uploaded Question Snippet", width=420)
+            st.image(image, caption="Uploaded Question", width=400)
 
             if st.button("Transcribe & Generate Answer", type="primary", key="btn_scan"):
                 if not client:
-                    st.error("Please supply a valid Groq API Key in secrets or in the sidebar.")
+                    st.error("Please supply a valid Groq API Key.")
                 else:
-                    with st.spinner("Transcribing question via Groq Vision OCR..."):
+                    with st.spinner("Extracting question text via Vision OCR..."):
                         try:
                             extracted_q = extract_question_from_image(client, image)
-                            st.success(f"**Transcribed Question:** {extracted_q}")
+                            st.success(f"**Transcribed:** {extracted_q}")
                             target_question = extracted_q
                         except Exception as e:
                             st.error(f"Vision OCR Error: {e}")
@@ -272,21 +304,24 @@ def main():
     # Answer Execution Block
     if target_question:
         if not client:
-            st.error("No active Groq API Key found. Please add it to Streamlit secrets or provide it in the sidebar.")
+            st.error("No active Groq API Key found. Please add GROQ_API_KEY to `.streamlit/secrets.toml`.")
             return
 
-        with st.spinner(f"Architecting {marks}-mark answer (Content-Specific Data + Body Diagram + Dual Strategy Conclusion)..."):
+        with st.spinner(f"Generating {marks}-mark master answer using Llama 3.3 70B..."):
             try:
                 answer = generate_model_answer(
                     client=client,
                     question=target_question,
                     marks=marks,
                     diagram_type=selected_diagram,
-                    text_model=text_model,
                 )
 
                 st.divider()
-                st.subheader(f"📝 Master Model Answer ({marks} Marks)")
+                st.subheader(f"📝 Model Answer ({marks} Marks)")
+                
+                # Render inside a readable container
+                st.markdown(f'<div class="answer-card">{answer}</div>', unsafe_allow_html=True)
+                # Fallback native render for Mermaid diagrams inside markdown
                 st.markdown(answer)
 
                 st.download_button(
