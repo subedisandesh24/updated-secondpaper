@@ -17,46 +17,44 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ----------------- HARDCODED BEST & FASTEST MODELS ----------------- #
-TEXT_MODEL = "llama-3.3-70b-versatile"       # Highest reasoning quality & blazing-fast inference (~280 t/s)
-VISION_MODEL = "llama-3.2-11b-vision-preview"  # Instant multimodal vision OCR
-
 # ----------------- CUSTOM READABILITY & UI STYLING ----------------- #
 st.markdown(
     """
     <style>
-    /* Main container clean typography */
     .main .block-container {
         max-width: 950px;
-        padding-top: 2rem;
+        padding-top: 1.5rem;
         padding-bottom: 3rem;
         line-height: 1.75;
         font-size: 1.05rem;
     }
-    
-    /* Clean headers */
     h1, h2, h3, h4 {
         color: #1e3a8a;
         font-weight: 700;
         letter-spacing: -0.01em;
     }
-    
-    /* Card-like answer container */
     .answer-card {
         background-color: #f8fafc;
         border: 1px solid #e2e8f0;
-        border-radius: 12px;
-        padding: 24px;
-        margin-top: 20px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        border-radius: 10px;
+        padding: 22px;
+        margin-top: 18px;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.04);
     }
-    
-    /* Key-point badges */
+    .model-badge {
+        background-color: #e0f2fe;
+        color: #0369a1;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        display: inline-block;
+        margin-bottom: 12px;
+    }
     strong {
         color: #0f172a;
     }
-    
-    /* Sidebar polish */
     .stSidebar {
         background-color: #f8fafc;
         border-right: 1px solid #e2e8f0;
@@ -115,7 +113,7 @@ B. FOR 10-MARK QUESTIONS (Target: 450-650 words, ~1.5 to 2 pages, 15-16 min):
       * STEP 3: Statutory & Policy Target Alignment (Explicitly state how specific provisions and targets of relevant Acts, Regulations, and Policies directly solve the identified problem).
 
 ========================================================================================
-3. EXHAUSTIVE STATUTORY & POLICY REPOSITORY (Select strictly what fits the question)
+3. EXHAUSTIVE STATUTORY & POLICY REPOSITORY
 ========================================================================================
 Dynamically cross-reference the relevant laws and plans based on the subject matter:
 - Food & Quality: Food Hygiene and Quality Act, 2081 (खाद्य स्वच्छता तथा गुणस्तर ऐन, २०८१), Right to Food & Food Sovereignty Act, 2075 & Regulation, 2081, Food Safety Policy, 2076.
@@ -126,14 +124,14 @@ Dynamically cross-reference the relevant laws and plans based on the subject mat
 - Soil, Forestry & Trade: Fertilizer Control Order, 2055 & Subsidy Directives, Agro-Forestry Policy, 2076, Agri-Business Promotion Policy, 2063, NTIS (2016/2023), WTO (AoA, SPS, TBT), SAFTA, Crop/Livestock Insurance Subsidy Directives.
 
 ========================================================================================
-4. TECHNICAL CONVENTIONS & READABILITY
+4. TECHNICAL CONVENTIONS
 ========================================================================================
 - Use bold keywords before colons: **[Technical Keyword]:** Detailed technical statement.
 - Write scientific botanical and zoological names strictly in italics (e.g., *Spodoptera frugiperda*, *Tuta absoluta*).
-- Maintain high information density and readable formatting with clean paragraph breaks.
+- Deliver dense, factual, and legally grounded answers with zero generic filler sentences.
 """
 
-# ----------------- CREDENTIALS RESOLVER ----------------- #
+# ----------------- CREDENTIALS & DYNAMIC MODEL RESOLVER ----------------- #
 def resolve_groq_api_key() -> str:
     """Auto-resolves Groq API key from Streamlit secrets, env variables, or session state."""
     if hasattr(st, "secrets"):
@@ -146,22 +144,76 @@ def resolve_groq_api_key() -> str:
         return env_key
     return st.session_state.get("manual_groq_api_key", "")
 
-# ----------------- BACKEND FUNCTIONS ----------------- #
 def get_groq_client(api_key: str):
     if not api_key:
         return None
     return Groq(api_key=api_key)
 
+def get_available_models(client: Groq):
+    """Dynamically queries the active model catalog on the user's specific Groq account."""
+    try:
+        models_data = client.models.list().data
+        return [m.id for m in models_data]
+    except Exception:
+        return []
+
+def select_best_models(available_models: list):
+    """
+    Selects the single highest quality and fastest active models with automatic fallbacks.
+    """
+    # Priority rank for reasoning & text generation (from highest reasoning to fast fallbacks)
+    text_priority = [
+        "openai/gpt-oss-120b",
+        "llama-3.3-70b-versatile",
+        "qwen/qwen3.8-27b",
+        "openai/gpt-oss-20b",
+        "llama-3.1-8b-instant",
+        "mixtral-8x7b-32768",
+    ]
+    
+    # Priority rank for multimodal vision OCR
+    vision_priority = [
+        "llama-3.2-11b-vision-preview",
+        "llama-3.2-90b-vision-preview",
+    ]
+
+    # Select best text model
+    text_model = None
+    for cand in text_priority:
+        if cand in available_models:
+            text_model = cand
+            break
+    if not text_model:
+        # Filter out audio/moderation models to find the first usable LLM
+        usable = [
+            m for m in available_models 
+            if not any(x in m for x in ["whisper", "guard", "embed", "safeguard", "orpheus"])
+        ]
+        text_model = usable[0] if usable else "llama-3.1-8b-instant"
+
+    # Select best vision model
+    vision_model = None
+    for cand in vision_priority:
+        if cand in available_models:
+            vision_model = cand
+            break
+    if not vision_model:
+        vision_candidates = [m for m in available_models if "vision" in m]
+        vision_model = vision_candidates[0] if vision_candidates else "llama-3.2-11b-vision-preview"
+
+    return text_model, vision_model
+
+# ----------------- BACKEND FUNCTIONS ----------------- #
 def encode_image(image: Image.Image) -> str:
     buffered = BytesIO()
     image.convert("RGB").save(buffered, format="JPEG")
     return base64.b64encode(buffered.getvalue()).decode("utf-8")
 
-def extract_question_from_image(client: Groq, image: Image.Image) -> str:
-    """Uses the fastest Groq multimodal vision model to transcribe question from image."""
+def extract_question_from_image(client: Groq, image: Image.Image, vision_model: str) -> str:
+    """Uses Groq multimodal vision model to transcribe question from image."""
     base64_img = encode_image(image)
     response = client.chat.completions.create(
-        model=VISION_MODEL,
+        model=vision_model,
         messages=[
             {
                 "role": "user",
@@ -181,8 +233,8 @@ def extract_question_from_image(client: Groq, image: Image.Image) -> str:
     )
     return response.choices[0].message.content.strip()
 
-def generate_model_answer(client: Groq, question: str, marks: int, diagram_type: str) -> str:
-    """Generates maximum-scoring answer using Llama 3.3 70B Versatile."""
+def generate_model_answer(client: Groq, question: str, marks: int, diagram_type: str, text_model: str, fallback_models: list) -> tuple:
+    """Generates maximum-scoring answer with automatic multi-model failover."""
     user_prompt = f"""
 EXAMINATION QUESTION:
 \"\"\"{question}\"\"\"
@@ -200,21 +252,32 @@ CRITICAL RULES:
    - Dual Strategy Formulation
    - Statutory & Policy Target Alignment (citing specific acts/rules up to 2081 BS).
 """
-    response = client.chat.completions.create(
-        model=TEXT_MODEL,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_prompt},
-        ],
-        temperature=0.25,
-        max_tokens=4096,
-    )
-    return response.choices[0].message.content
+    # Candidate order: primary model followed by remaining available fallbacks
+    candidates = [text_model] + [m for m in fallback_models if m != text_model]
+    
+    last_error = None
+    for model_id in candidates:
+        try:
+            response = client.chat.completions.create(
+                model=model_id,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=0.25,
+                max_tokens=4096,
+            )
+            return response.choices[0].message.content, model_id
+        except Exception as e:
+            last_error = e
+            continue
 
-# ----------------- STREAMLINED USER INTERFACE ----------------- #
+    raise last_error
+
+# ----------------- USER INTERFACE ----------------- #
 def main():
     st.title("🌾 Lok Sewa Agriculture Paper II: Master Engine")
-    st.caption("Engineered for Gazetted 3rd Class Officers • Automatic Optimal Model Active (`Llama 3.3 70B`)")
+    st.caption("Auto-Selecting Fastest High-Reasoning Model • 2081 BS Legal Baseline Embedded")
 
     # Resolve API Key
     active_api_key = resolve_groq_api_key()
@@ -223,9 +286,9 @@ def main():
         st.header("⚙️ Exam Controls")
         
         if active_api_key:
-            st.success("🔒 API Key Active (Streamlit Secrets)")
+            st.success("🔒 API Key Connected")
         else:
-            st.warning("⚠️ No API Key found in `st.secrets`.")
+            st.warning("⚠️ No API Key found.")
             input_key = st.text_input(
                 "Enter Groq API Key:",
                 type="password",
@@ -242,7 +305,7 @@ def main():
             options=[10, 5],
             index=0,
             horizontal=True,
-            help="10 Marks = Exhaustive answer with full body diagram & 3-step conclusion | 5 Marks = Compact technical answer",
+            help="10 Marks = Full body diagram & 3-step conclusion | 5 Marks = Compact technical answer",
         )
 
         diagram_options = [
@@ -287,15 +350,17 @@ def main():
         )
         if uploaded_file is not None:
             image = Image.open(uploaded_file)
-            st.image(image, caption="Uploaded Question", width=400)
+            st.image(image, caption="Uploaded Question", width=380)
 
             if st.button("Transcribe & Generate Answer", type="primary", key="btn_scan"):
                 if not client:
                     st.error("Please supply a valid Groq API Key.")
                 else:
-                    with st.spinner("Extracting question text via Vision OCR..."):
+                    with st.spinner("Connecting to vision engine..."):
                         try:
-                            extracted_q = extract_question_from_image(client, image)
+                            available_models = get_available_models(client)
+                            _, vision_model = select_best_models(available_models)
+                            extracted_q = extract_question_from_image(client, image, vision_model)
                             st.success(f"**Transcribed:** {extracted_q}")
                             target_question = extracted_q
                         except Exception as e:
@@ -307,21 +372,25 @@ def main():
             st.error("No active Groq API Key found. Please add GROQ_API_KEY to `.streamlit/secrets.toml`.")
             return
 
-        with st.spinner(f"Generating {marks}-mark master answer using Llama 3.3 70B..."):
+        with st.spinner("Auto-selecting optimal Groq model and architecting answer..."):
             try:
-                answer = generate_model_answer(
+                available_models = get_available_models(client)
+                text_model, _ = select_best_models(available_models)
+                
+                answer, executed_model = generate_model_answer(
                     client=client,
                     question=target_question,
                     marks=marks,
                     diagram_type=selected_diagram,
+                    text_model=text_model,
+                    fallback_models=available_models,
                 )
 
                 st.divider()
+                st.markdown(f'<span class="model-badge">⚡ Engine: {executed_model}</span>', unsafe_allow_html=True)
                 st.subheader(f"📝 Model Answer ({marks} Marks)")
                 
-                # Render inside a readable container
-                st.markdown(f'<div class="answer-card">{answer}</div>', unsafe_allow_html=True)
-                # Fallback native render for Mermaid diagrams inside markdown
+                # Render inside readable container
                 st.markdown(answer)
 
                 st.download_button(
